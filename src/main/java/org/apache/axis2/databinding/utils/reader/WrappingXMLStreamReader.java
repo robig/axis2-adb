@@ -50,32 +50,26 @@ public class WrappingXMLStreamReader implements ADBXMLStreamReader, DataHandlerR
         return XMLStreamReaderUtils.processGetProperty(this, string);
     }
 
-    @Override
     public boolean isBinary() {
         return dataHandlerReader != null && dataHandlerReader.isBinary();
     }
 
-    @Override
     public boolean isOptimized() {
         return dataHandlerReader.isOptimized();
     }
 
-    @Override
     public boolean isDeferred() {
         return dataHandlerReader.isDeferred();
     }
 
-    @Override
     public String getContentID() {
         return dataHandlerReader.getContentID();
     }
 
-    @Override
     public DataHandler getDataHandler() throws XMLStreamException {
         return dataHandlerReader.getDataHandler();
     }
 
-    @Override
     public DataHandlerProvider getDataHandlerProvider() {
         return dataHandlerReader.getDataHandlerProvider();
     }

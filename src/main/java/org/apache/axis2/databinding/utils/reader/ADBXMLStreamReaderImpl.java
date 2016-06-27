@@ -19,6 +19,20 @@
 
 package org.apache.axis2.databinding.utils.reader;
 
+import java.lang.reflect.Array;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+
+import javax.activation.DataHandler;
+import javax.xml.namespace.NamespaceContext;
+import javax.xml.namespace.QName;
+import javax.xml.stream.Location;
+import javax.xml.stream.XMLStreamException;
+
 import org.apache.axiom.ext.stax.datahandler.DataHandlerProvider;
 import org.apache.axiom.ext.stax.datahandler.DataHandlerReader;
 import org.apache.axiom.om.OMAttribute;
@@ -30,14 +44,6 @@ import org.apache.axis2.databinding.typemapping.SimpleTypeMapper;
 import org.apache.axis2.databinding.utils.BeanUtil;
 import org.apache.axis2.databinding.utils.ConverterUtil;
 import org.apache.axis2.description.java2wsdl.TypeTable;
-
-import javax.activation.DataHandler;
-import javax.xml.namespace.NamespaceContext;
-import javax.xml.namespace.QName;
-import javax.xml.stream.Location;
-import javax.xml.stream.XMLStreamException;
-import java.util.*;
-import java.lang.reflect.Array;
 
 /**
  * This is the new implementation of the ADBpullaparser. The approach here is simple When the pull
@@ -174,32 +180,26 @@ public class ADBXMLStreamReaderImpl implements ADBXMLStreamReader, DataHandlerRe
         return XMLStreamReaderUtils.processGetProperty(this, key);
     }
 
-    @Override
     public boolean isBinary() {
         return state == DELEGATED_STATE && childReader instanceof DataHandlerReader && ((DataHandlerReader)childReader).isBinary();
     }
 
-    @Override
     public boolean isOptimized() {
         return ((DataHandlerReader)childReader).isOptimized();
     }
 
-    @Override
     public boolean isDeferred() {
         return ((DataHandlerReader)childReader).isDeferred();
     }
 
-    @Override
     public String getContentID() {
         return ((DataHandlerReader)childReader).getContentID();
     }
 
-    @Override
     public DataHandler getDataHandler() throws XMLStreamException {
         return ((DataHandlerReader)childReader).getDataHandler();
     }
 
-    @Override
     public DataHandlerProvider getDataHandlerProvider() {
         return ((DataHandlerReader)childReader).getDataHandlerProvider();
     }

@@ -65,32 +65,26 @@ public class ADBDataHandlerStreamReader implements ADBXMLStreamReader, DataHandl
         return XMLStreamReaderUtils.processGetProperty(this, propKey);
     }
 
-    @Override
     public boolean isBinary() {
         return state == TEXT_STATE;
     }
 
-    @Override
     public boolean isOptimized() {
         return true;
     }
 
-    @Override
     public boolean isDeferred() {
         return false;
     }
 
-    @Override
     public String getContentID() {
         return null;
     }
 
-    @Override
     public DataHandler getDataHandler() throws XMLStreamException {
         return value;
     }
 
-    @Override
     public DataHandlerProvider getDataHandlerProvider() {
         throw new UnsupportedOperationException();
     }
