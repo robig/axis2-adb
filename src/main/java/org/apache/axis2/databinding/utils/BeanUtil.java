@@ -185,6 +185,12 @@ public class BeanUtil {
                         }
                     }
                 }
+                
+                //ADDED by XCOM rgroeber 
+                Method writeMethod = property.getWriteMethod();
+                if(writeMethod == null) continue;
+                //END
+                
                 Object value;
                 if (readMethod != null) {
                     readMethod.setAccessible(true);
