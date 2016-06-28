@@ -19,6 +19,34 @@
 
 package org.apache.axis2.databinding.utils;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.lang.reflect.Array;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.GregorianCalendar;
+import java.util.List;
+import java.util.Locale;
+import java.util.TimeZone;
+
+import javax.activation.DataHandler;
+import javax.xml.datatype.DatatypeConfigurationException;
+import javax.xml.datatype.DatatypeFactory;
+import javax.xml.datatype.XMLGregorianCalendar;
+import javax.xml.namespace.NamespaceContext;
+import javax.xml.namespace.QName;
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamReader;
+import javax.xml.stream.XMLStreamWriter;
+
 import org.apache.axiom.attachments.ByteArrayDataSource;
 import org.apache.axiom.om.OMElement;
 import org.apache.axiom.om.util.AXIOMUtil;
@@ -61,30 +89,6 @@ import org.apache.axis2.databinding.types.YearMonth;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-
-import javax.activation.DataHandler;
-import javax.xml.datatype.DatatypeConfigurationException;
-import javax.xml.datatype.DatatypeFactory;
-import javax.xml.datatype.XMLGregorianCalendar;
-import javax.xml.namespace.NamespaceContext;
-import javax.xml.namespace.QName;
-import javax.xml.stream.XMLStreamException;
-import javax.xml.stream.XMLStreamReader;
-import javax.xml.stream.XMLStreamWriter;
-import java.io.IOException;
-import java.io.InputStream;
-import java.lang.reflect.Array;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.math.BigDecimal;
-import java.math.BigInteger;
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.GregorianCalendar;
-import java.util.List;
-import java.util.TimeZone;
 
 /**
  * Converter methods to go from 1. simple type -> String 2. simple type -> Object 3. String ->
@@ -562,78 +566,18 @@ public class ConverterUtil {
      * @param source
      * @return Returns Date.
      */
-    public static Date convertToDate(String source) {
-
-        // the lexical form of the date is '-'? yyyy '-' mm '-' dd zzzzzz?
-        if ((source == null) || source.trim().equals("")) {
-            return null;
+    //"2016-06-27T15:19:01+02:00";
+    public static Date convertToDate(String source)
+    {
+        Date thedate=null;
+        try
+        {
+            thedate = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.ENGLISH).parse(source);
+        } catch (ParseException e)
+        {
+            e.printStackTrace();
         }
-        source = source.trim();
-        boolean bc = false;
-        if (source.startsWith("-")) {
-            source = source.substring(1);
-            bc = true;
-        }
-
-        int year = 0;
-        int month = 0;
-        int day = 0;
-        int timeZoneOffSet = TimeZone.getDefault().getRawOffset();
-
-        if (source.length() >= 10) {
-            //first 10 numbers must give the year
-            if ((source.charAt(4) != '-') || (source.charAt(7) != '-')){
-                throw new RuntimeException("invalid date format (" + source + ") with out - s at correct place ");
-            }
-            year = Integer.parseInt(source.substring(0,4));
-            month = Integer.parseInt(source.substring(5,7));
-            day = Integer.parseInt(source.substring(8,10));
-
-            if (source.length() > 10) {
-                String restpart = source.substring(10);
-                if (restpart.startsWith("Z")) {
-                    // this is a gmt time zone value
-                    timeZoneOffSet = 0;
-                } else if (restpart.startsWith("+") || restpart.startsWith("-") || restpart.startsWith("T")) {
-                    // this is a specific time format string
-                    if (restpart.charAt(3) != ':'){
-                        throw new RuntimeException("invalid time zone format (" + source
-                                + ") without : at correct place");
-                    }
-                    int hours = Integer.parseInt(restpart.substring(1,3));
-                    int minits = Integer.parseInt(restpart.substring(4,6));
-                    timeZoneOffSet = ((hours * 60) + minits) * 60000;
-                    if (restpart.startsWith("-")){
-                        timeZoneOffSet = timeZoneOffSet * -1;
-                    }
-                } else {
-                    throw new RuntimeException("In valid string sufix");
-                }
-            }
-        } else {
-            throw new RuntimeException("In valid string to parse");
-        }
-
-        Calendar calendar = Calendar.getInstance();
-        calendar.clear();
-        calendar.setLenient(false);
-        calendar.set(Calendar.YEAR, year);
-        //xml month stars from the 1 and calendar month is starts with 0
-        calendar.set(Calendar.MONTH, month - 1);
-        calendar.set(Calendar.DAY_OF_MONTH, day);
-        calendar.set(Calendar.ZONE_OFFSET, timeZoneOffSet);
-
-        // set the day light off set only if time zone
-        if (source.length() >= 10) {
-            calendar.set(Calendar.DST_OFFSET, 0);
-        }
-        calendar.getTimeInMillis();
-        if (bc){
-            calendar.set(Calendar.ERA, GregorianCalendar.BC);
-        }
-
-        return calendar.getTime();
-
+        return thedate;
     }    
     
     /**
