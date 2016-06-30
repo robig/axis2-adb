@@ -109,10 +109,10 @@ public class MultirefHelper {
     }
 
     public Object processRef(Class javatype, String id,
-	    ObjectSupplier objectSupplier) throws AxisFault {
-	return processRef(javatype, null, id, objectSupplier);
+	    ObjectSupplier objectSupplier, Object[] javaTypes) throws AxisFault {
+	return processRef(javatype, null, id, objectSupplier, javaTypes);
     }
-    public Object processRef(Class javatype, Type generictype, String id, ObjectSupplier objectSupplier)
+    public Object processRef(Class javatype, Type generictype, String id, ObjectSupplier objectSupplier, Object[] javaTypes)
             throws AxisFault {
         if (!filledTable) {
             readallChildElements();
@@ -137,7 +137,7 @@ public class MultirefHelper {
             } else if (generictype != null
         	    && SimpleTypeMapper.isCollection(javatype)) {
         	return BeanUtil.processGenericCollection(val.getFirstElement(),
-        		generictype, this, objectSupplier);
+        		generictype, this, objectSupplier, javaTypes);
             } else if (generictype != null
         	    && SimpleTypeMapper.isMap(javatype)) {
         	Type[] parameterArgTypes = {Object.class, Object.class};
@@ -147,9 +147,9 @@ public class MultirefHelper {
         	}                                   
 		return BeanUtil.processGenericsMapElement(parameterArgTypes,
 			val.getFirstElement(), this, val.getChildren(),
-			objectSupplier, generictype);
+			objectSupplier, generictype, javaTypes);
             } else {
-                Object obj = BeanUtil.deserialize(javatype, val, this, objectSupplier);
+                Object obj = BeanUtil.deserialize(javatype, val, this, objectSupplier, javaTypes);
                 objectmap.put(id, obj);
                 return obj;
             }

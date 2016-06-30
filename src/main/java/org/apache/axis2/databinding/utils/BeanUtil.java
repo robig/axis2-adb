@@ -61,6 +61,7 @@ import org.apache.axis2.AxisFault;
 import org.apache.axis2.classloader.BeanInfoCache;
 import org.apache.axis2.context.MessageContext;
 import org.apache.axis2.databinding.typemapping.SimpleTypeMapper;
+import org.apache.axis2.databinding.typemapping.XmlElement;
 import org.apache.axis2.databinding.utils.reader.ADBXMLStreamReaderImpl;
 import org.apache.axis2.deployment.util.BeanExcludeInfo;
 import org.apache.axis2.description.AxisService;
@@ -189,17 +190,32 @@ public class BeanUtil {
                 //ADDED by XCOM rgroeber 
                 Method writeMethod = property.getWriteMethod();
                 if(writeMethod == null) continue;
+                
+                try{
+                    XmlElement el = readMethod.getAnnotation(XmlElement.class);
+                    if(el!=null && el.name()!=null)
+                    {
+                        property.setName(el.name());
+                    }
+                }catch(Throwable t)
+                {}
                 //END
                 
                 Object value;
                 if (readMethod != null) {
                     readMethod.setAccessible(true);
                     value = readMethod.invoke(beanObject);
+                    
                 } else {
                     throw new AxisFault("Property '" + propertyName + "' in bean class '"
                                         + beanClass.getName() + "'is not readable.");
                 }
 
+                //ADDED by XCOM rgroeber 
+                if(value==null && System.getProperty(Constants.SYSTEM_PROPERTY_NO_XSI_NIL_ATTRIBUTES)!=null)
+                    continue; //DON'T add optional elements to XML
+                //end
+                
                 if (SimpleTypeMapper.isSimpleType(ptype)) {
                     addTypeQname(elemntNameSpace, propertyQnameValueList, property,
                                  beanName, processingDocLitBare);
@@ -359,6 +375,7 @@ public class BeanUtil {
                     propertyQnameValueList.add(
                             value == null ? null : SimpleTypeMapper.getStringValue(value.toString()));
                 }else {
+                    if(value==null) continue;
                     addTypeQname(elemntNameSpace, propertyQnameValueList, property,
                                  beanName, processingDocLitBare);
                     if (Object.class.equals(ptype) && value != null) {
@@ -451,7 +468,8 @@ public class BeanUtil {
     public static Object deserialize(Class beanClass,
                                      OMElement beanElement,
                                      ObjectSupplier objectSupplier,
-                                     String arrayLocalName)
+                                     String arrayLocalName,
+                                     Object[] javaTypes)
             throws AxisFault {
         Object beanObj;
         try {
@@ -462,7 +480,7 @@ public class BeanUtil {
             String instanceTypeName = null;
             if (beanClass != null && !beanClass.isArray()) {
                 instanceTypeName = beanElement.getAttributeValue(new QName(
-                        Constants.XSI_NAMESPACE, "type"));
+                        Constants.XSI_NAMESPACE, Constants.XSI_TYPE_ATTRIBUTE));
             }
             boolean hexBin = false;
             if (instanceTypeName != null) {
@@ -489,6 +507,24 @@ public class BeanUtil {
                             throw new AxisFault("Unknow type " + typeQName);
                         }
                     }
+                }
+                else if(javaTypes!=null)//Client side (by XCOM)
+                {
+                    try{
+                        QName typeQName = beanElement.resolveQName(instanceTypeName);
+                        String className = instanceTypeName.split(":")[1];
+                        className = className.substring(0, 1).toUpperCase() + className.substring(1);
+                        for(Object o: javaTypes)
+                        {
+                            Class cls = (Class) o;
+                            if(cls.getSimpleName().equals(className)
+                                    && cls.getSuperclass().equals(beanClass))
+                            {//Found my Type! yey!
+                                beanClass = cls;
+                            }
+                        }
+                    }catch(Exception e)
+                    {}
                 }
             }
 
@@ -528,7 +564,7 @@ public class BeanUtil {
                             // this is a multi dimentional array so always inner element is array
                             Object obj = deserialize(arrayClassType,
                                                      omElement,
-                                                     objectSupplier, "array");
+                                                     objectSupplier, "array", javaTypes);
 
                             valueList.add(obj);
                         }
@@ -611,13 +647,13 @@ public class BeanUtil {
                                         parts.getParent(), prty.getName());
                             } else if (SimpleTypeMapper.isCollection(parameters)) {
                                 Type type = prty.getReadMethod().getGenericReturnType();
-                                partObj = processGenericCollection(parts, type, null, objectSupplier);  
+                                partObj = processGenericCollection(parts, type, null, objectSupplier, javaTypes);
 
                             } else if (SimpleTypeMapper.isDataHandler(parameters)) {
                                 partObj = SimpleTypeMapper.getDataHandler(parts);
                             } else if (parameters.isArray()) {
                                 partObj = deserialize(parameters, (OMElement) parts.getParent(),
-                                                      objectSupplier, prty.getName());
+                                                      objectSupplier, prty.getName(), javaTypes);
                             } else if (SimpleTypeMapper.isMap(parameters)){
                                 partObj = null;
                                 final Type type = prty.getReadMethod().getGenericReturnType();
@@ -625,16 +661,16 @@ public class BeanUtil {
                                     ParameterizedType aType = (ParameterizedType) type;
                                     Type[] parameterArgTypes = aType.getActualTypeArguments();
                                     partObj = processGenericsMapElement(parameterArgTypes
-                                          , (OMElement) parts.getParent(), null, parts.getChildren(), objectSupplier, beanClass);
+                                          , (OMElement) parts.getParent(), null, parts.getChildren(), objectSupplier, beanClass, javaTypes);
                                 } else {
                                     Type[] parameterArgTypes = {Object.class,Object.class}; 
                                     partObj = processGenericsMapElement(parameterArgTypes
-                                             , (OMElement) parts.getParent(), null, parts.getChildren(), objectSupplier, beanClass);
+                                             , (OMElement) parts.getParent(), null, parts.getChildren(), objectSupplier, beanClass, javaTypes);
                                 }
                             }else if (SimpleTypeMapper.isEnum(parameters)) {
                                 partObj =processEnumObject(parameters , parts);
                             } else {
-                                partObj = deserialize(parameters, parts, objectSupplier, null);
+                                partObj = deserialize(parameters, parts, objectSupplier, null, javaTypes);
                             }
                         }
                         Object[] parms = new Object[]{partObj};
@@ -663,7 +699,8 @@ public class BeanUtil {
     public static Object deserialize(Class beanClass,
                                      OMElement beanElement,
                                      MultirefHelper helper,
-                                     ObjectSupplier objectSupplier) throws AxisFault {
+                                     ObjectSupplier objectSupplier,
+                                     Object[] javaTypes) throws AxisFault {
         Object beanObj;
         try {
             HashMap<String, PropertyDescriptor> properties = new HashMap<String, PropertyDescriptor>();
@@ -696,12 +733,12 @@ public class BeanUtil {
                         String refId = MultirefHelper.getAttvalue(attr);
                         partObj = helper.getObject(refId);
                         if (partObj == null) {
-                            partObj = helper.processRef(parameters, refId, objectSupplier);
+                            partObj = helper.processRef(parameters, refId, objectSupplier, javaTypes);
                         }
                     } else {
                         partObj = SimpleTypeMapper.getSimpleTypeObject(parameters, parts);
                         if (partObj == null) {
-                            partObj = deserialize(parameters, parts, objectSupplier, null);
+                            partObj = deserialize(parameters, parts, objectSupplier, null, javaTypes);
                         }
                     }
                     Object[] parms = new Object[]{partObj};
@@ -830,7 +867,7 @@ public class BeanUtil {
             }
            
             omElement = processElement(classType, omElement, helper, parts,
-                                       currentLocalName, retObjs, count, objectSupplier, genericType, bare);
+                                       currentLocalName, retObjs, count, objectSupplier, genericType, bare, javaTypes);
             while (omElement != null) {
                 count++;
                 // if the local part is not match. this means element is not present
@@ -880,7 +917,7 @@ public class BeanUtil {
             ObjectSupplier objectSupplier, Type genericType) throws AxisFault {
 
         return processElement(classType, omElement, helper, parts,
-                currentLocalName, retObjs, count, objectSupplier, genericType, false);
+                currentLocalName, retObjs, count, objectSupplier, genericType, false, null);
 
     }
     private static OMElement processElement(Class classType, OMElement omElement,
@@ -889,7 +926,7 @@ public class BeanUtil {
                                             Object[] retObjs,
                                             int count,
                                             ObjectSupplier objectSupplier,
-                                            Type genericType, boolean bare) throws AxisFault {
+                                            Type genericType, boolean bare, Object[] javaTypes) throws AxisFault {
         Object objValue;
         boolean isRef = false;
         OMAttribute omatribute = MultirefHelper.processRefAtt(omElement);
@@ -902,11 +939,11 @@ public class BeanUtil {
             Class arrayClassType = classType.getComponentType();
             if ("byte".equals(arrayClassType.getName())) {
                 retObjs[count] =
-                        processObject(omElement, arrayClassType, helper, true, objectSupplier, genericType);
+                        processObject(omElement, arrayClassType, helper, true, objectSupplier, genericType, javaTypes);
                 return null;
             } else {
                 valueList.add(processObject(omElement, arrayClassType, helper, true,
-                                            objectSupplier, genericType));
+                                            objectSupplier, genericType, javaTypes));
             }
             while (parts.hasNext()) {
                 objValue = parts.next();
@@ -920,7 +957,7 @@ public class BeanUtil {
                     break;
                 }
                 Object o = processObject(omElement, arrayClassType,
-                                         helper, true, objectSupplier, genericType);
+                                         helper, true, objectSupplier, genericType, javaTypes);
                 valueList.add(o);
             }
             if (valueList.size() == 1 && valueList.get(0) == null) {
@@ -937,7 +974,7 @@ public class BeanUtil {
             if(bare){
                 OMElement[] toReturn = new OMElement[1];
                 parts = omElement.getChildren();
-                retObjs[count] = processGenericCollection(omElement.getFirstElement(), toReturn, genericType, helper, objectSupplier, parts,bare);
+                retObjs[count] = processGenericCollection(omElement.getFirstElement(), toReturn, genericType, helper, objectSupplier, parts,bare, javaTypes);
                 OMNode node = omElement.getNextOMSibling();
                 while(node != null){
                     if(OMElement.class.isAssignableFrom(node.getClass())){
@@ -949,7 +986,7 @@ public class BeanUtil {
             
             } else {
             OMElement[] toReturn = new OMElement[1];
-                retObjs[count] = processGenericCollection(omElement, toReturn, genericType, helper, objectSupplier, parts,bare);
+                retObjs[count] = processGenericCollection(omElement, toReturn, genericType, helper, objectSupplier, parts,bare,javaTypes);
                  if (toReturn[0] != null) {
                      return toReturn[0];
                  }
@@ -959,7 +996,7 @@ public class BeanUtil {
             retObjs[count] = processEnumObject(classType, omElement);
         } else{
             //handling refs
-            retObjs[count] = processObject(omElement, classType, helper, false, objectSupplier, genericType);
+            retObjs[count] = processObject(omElement, classType, helper, false, objectSupplier, genericType, javaTypes);
             
             
         }
@@ -969,7 +1006,8 @@ public class BeanUtil {
     private static Collection<Object> processGenericsElement(Type classType, OMElement omElement,
                                                MultirefHelper helper, Iterator parts,
                                                ObjectSupplier objectSupplier,
-                                               Type genericType) throws AxisFault {
+                                               Type genericType,
+                                               Object[] javaTypes) throws AxisFault {
         Object objValue;
         Collection<Object> valueList = getCollectionInstance(genericType);
         while (parts.hasNext()) {
@@ -986,22 +1024,23 @@ public class BeanUtil {
                         .isAssignableFrom((Class<?>) parameterizedClassType
                                 .getRawType())) {
                     o = processGenericCollection(omElement.getFirstElement(),
-                            classType, helper, objectSupplier);
+                            classType, helper, objectSupplier, javaTypes);
                 } else if (Map.class
                         .isAssignableFrom((Class<?>) parameterizedClassType
                                 .getRawType())) {
                     o = processGenericsMapElement( 
                             parameterizedClassType.getActualTypeArguments(),
                             omElement, helper, omElement.getChildren(), objectSupplier,
-                            parameterizedClassType);
+                            parameterizedClassType,
+                            javaTypes);
                 } else {
                     o = processObject(omElement, (Class) classType,
-                             helper, true, objectSupplier, genericType);
+                             helper, true, objectSupplier, genericType, javaTypes);
                 }
                 
             } else {
                 o = processObject(omElement, (Class) classType,
-                         helper, true, objectSupplier, genericType);
+                         helper, true, objectSupplier, genericType, javaTypes);
                 
             }
             
@@ -1017,7 +1056,8 @@ public class BeanUtil {
                                        MultirefHelper helper,
                                        boolean isArrayType,
                                        ObjectSupplier objectSupplier,
-                                       Type generictype) throws AxisFault {
+                                       Type generictype,
+                                       Object[] javaTypes) throws AxisFault {
         boolean hasRef = false;
         OMAttribute omatribute = MultirefHelper.processRefAtt(omElement);
         String ref = null;
@@ -1040,7 +1080,7 @@ public class BeanUtil {
                 if (helper.getObject(ref) != null) {
                     return helper.getObject(ref);
                 } else {
-                    return helper.processRef(classType, generictype, ref, objectSupplier);
+                    return helper.processRef(classType, generictype, ref, objectSupplier, javaTypes);
                 }
             } else {
                 OMAttribute attribute = omElement.getAttribute(
@@ -1056,7 +1096,7 @@ public class BeanUtil {
                         return getSimpleTypeObjectChecked(classType, omElement);
                     }
                 } else if (SimpleTypeMapper.isCollection(classType)) {
-                    return processGenericCollection(omElement, generictype, null, objectSupplier); 
+                    return processGenericCollection(omElement, generictype, null, objectSupplier, javaTypes); 
 
                 } else if (SimpleTypeMapper.isDataHandler(classType)) {
                     return SimpleTypeMapper.getDataHandler(omElement);
@@ -1069,18 +1109,18 @@ public class BeanUtil {
                         Type[] parameterArgTypes = aType.getActualTypeArguments();
                         Iterator parts = omElement.getChildElements();
                         return processGenericsMapElement(parameterArgTypes
-                             , omElement, helper, parts, objectSupplier, generictype);
+                             , omElement, helper, parts, objectSupplier, generictype, javaTypes);
                     } else {
                         Type[] parameterArgTypes = {Object.class,Object.class}; 
                         Iterator parts = omElement.getChildElements();
                         return processGenericsMapElement(parameterArgTypes,
-                                omElement, helper, parts, objectSupplier, generictype);   
+                                omElement, helper, parts, objectSupplier, generictype, javaTypes);
                     }
                 
                 }else if(SimpleTypeMapper.isEnum(classType)){
                     return processEnumObject(classType, omElement);
                 }else {
-                    return BeanUtil.deserialize(classType, omElement, objectSupplier, null);
+                    return BeanUtil.deserialize(classType, omElement, objectSupplier, null, javaTypes);
                 }
             }
         }
@@ -1372,7 +1412,7 @@ public class BeanUtil {
      */
     public static Map<Object,Object> processGenericsMapElement(Type[] parameterArgTypes,
             OMElement omElement, MultirefHelper helper, Iterator parts,
-            ObjectSupplier objectSupplier, Type genericType) throws AxisFault {
+            ObjectSupplier objectSupplier, Type genericType, Object[] javaTypes) throws AxisFault {
         Object objValue;
         Map<Object,Object> valueMap = getMapInstance(genericType) ;
         while (parts.hasNext()) {
@@ -1397,13 +1437,13 @@ public class BeanUtil {
                     if (omElement.getLocalName().equals(
                             org.apache.axis2.Constants.MAP_KEY_ELEMENT_NAME)) {
                         entryKey = processMapParameterObject( parameterArgTypes[0], omElement,
-                                helper, objectSupplier, genericType);
+                                helper, objectSupplier, genericType, javaTypes);
                         continue;
                     }
                     if (omElement.getLocalName().equals(
                             org.apache.axis2.Constants.MAP_VALUE_ELEMENT_NAME)) {
                         entryValue = processMapParameterObject( parameterArgTypes[1],
-                                omElement, helper, objectSupplier, genericType);
+                                omElement, helper, objectSupplier, genericType, javaTypes);
                         continue;
                     }
                 }
@@ -1539,20 +1579,20 @@ public class BeanUtil {
      */
     private static Object processMapParameterObject(Type paraType, OMElement omElement,
             MultirefHelper helper, ObjectSupplier objectSupplier,
-            Type genericType) throws AxisFault {
+            Type genericType, Object[] javaTypes) throws AxisFault {
         if (paraType instanceof ParameterizedType) {
             if (Map.class.isAssignableFrom((Class)
                     ((ParameterizedType) paraType).getRawType())) {
                 return processGenericsMapElement(
                         ((ParameterizedType) paraType).getActualTypeArguments(),
                         omElement, helper, omElement.getChildren(),
-                        objectSupplier, paraType);
+                        objectSupplier, paraType, javaTypes);
             } else if (Collection.class.isAssignableFrom((Class) 
                     ((ParameterizedType) paraType).getRawType())) {
                 return processGenericCollection(
                         omElement,
                         (ParameterizedType) paraType,
-                        helper, objectSupplier);
+                        helper, objectSupplier, javaTypes);
             } else {
                 throw new AxisFault("Map parameter does not support for "
                         + ((ParameterizedType) paraType).getRawType());
@@ -1560,7 +1600,7 @@ public class BeanUtil {
 
         } else {
             return processObject(omElement, (Class) paraType, helper, true,
-                    objectSupplier, genericType);
+                    objectSupplier, genericType, javaTypes);
         }
     }
     
@@ -1706,7 +1746,7 @@ public class BeanUtil {
      */
     public static Collection<Object> processGenericCollection(OMElement omElement,
             Type generictype, MultirefHelper helper,
-            ObjectSupplier objectSupplier) throws AxisFault {
+            ObjectSupplier objectSupplier, Object[] javaTypes) throws AxisFault {
     QName partName = omElement.getQName();
     Type parameter = Object.class;
     if (generictype != null && (generictype instanceof ParameterizedType)) {
@@ -1720,7 +1760,7 @@ public class BeanUtil {
      */
     Iterator parts = omElement.getParent().getChildrenWithName(partName);
     return processGenericsElement(parameter, omElement, helper, parts,
-        objectSupplier, generictype);
+        objectSupplier, generictype, javaTypes);
     }
     
     /**
@@ -1738,7 +1778,7 @@ public class BeanUtil {
      */
     public static Collection<Object> processGenericCollection(OMElement omElement,
         OMElement[] toReturn, Type generictype, MultirefHelper helper,
-        ObjectSupplier objectSupplier, Iterator parts, boolean bare)
+        ObjectSupplier objectSupplier, Iterator parts, boolean bare, Object[] javaTypes)
         throws AxisFault {
         String currentLocalName = omElement.getLocalName();
         Type parameter = Object.class;
@@ -1771,7 +1811,7 @@ public class BeanUtil {
             }
         }
         return processGenericsElement(parameter, omElement, helper,
-            eleList.iterator(), objectSupplier, generictype);
+            eleList.iterator(), objectSupplier, generictype, javaTypes);
     }
 
     /**

@@ -37,4 +37,6 @@ public interface Constants {
 
     static Object OM_ATTRIBUTE_KEY = new OMAttribKey();
     static Object OM_ELEMENT_KEY = new OMElementKey();
+    
+    static String SYSTEM_PROPERTY_NO_XSI_NIL_ATTRIBUTES = "axis2.adb.no_xsi_nil_values";
 }
