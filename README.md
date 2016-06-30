@@ -1,4 +1,4 @@
-# axit2-adb
+# axis2-adb
 
 Fork of org.apache.axi2.axi2-adb Library to fix some major issues with our SOAP implementation.
 Used source: axis2-adb-1.7.3-sources.jar
