@@ -1,7 +1,7 @@
 # axit2-adb
 
-Fork ob org.apache.axi2.axi2-adb Library to fix some major issues with out SOAP implementation.
-Used source: axis2-adp_1.7.3-sources.jar
+Fork of org.apache.axi2.axi2-adb Library to fix some major issues with our SOAP implementation.
+Used source: axis2-adb-1.7.3-sources.jar
 
 Features:
 * xsi:type mapping at client side
